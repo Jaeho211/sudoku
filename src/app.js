@@ -13,12 +13,19 @@ function save(){if(!state)return;if(mode==='play')storage.write(playKey(size),st
 function message(text,tone='neutral'){$('message').textContent=text;$('feedback').hidden=false;$('feedback').dataset.tone=tone;}
 function reset(){selected=-1;memo=false;history=[];hintStep=null;hintLevel=0;completed=false;errorClues=[];$('success').replaceChildren();$('success').hidden=true;$('feedback').dataset.tone='neutral';}
 function refreshHome(){
- $('stage-progress').textContent=`${progress.cleared} / ${stages.length} 스테이지 클리어`;
+ $('stage-progress').textContent=`${progress.cleared} / ${stages.length} 클리어`;
+ const allDone=progress.cleared===stages.length,next=allDone?null:stages[progress.cleared],resuming=!allDone&&progress.active?.index===progress.cleared&&valid(progress.active.state,next.size);
+ $('next-stage-label').textContent=allDone?'탐험 완료':`${progress.cleared+1}단계 · ${resuming?'진행 중':'다음 도전'}`;
+ $('next-stage-title').textContent=allDone?'9×9 문제 풀기가 열렸어요!':next.title;
+ $('continue-stage').textContent=allDone?'9×9 문제 풀기 →':resuming?'이어서 배우기 →':`${progress.cleared+1}단계 시작하기 →`;
+ $('continue-stage').onclick=()=>allDone?startPlay(9):startStage(progress.cleared);
+ $('journey-dots').replaceChildren();stages.forEach((_,i)=>{const dot=document.createElement('span');dot.className=i<progress.cleared?'cleared':i===progress.cleared?'current':'';dot.textContent=i<progress.cleared?'✓':String(i+1);$('journey-dots').append(dot);});
+ $('nine-badge').textContent=allDone?'열림':'잠김';
  $('stage-list').replaceChildren();stages.forEach((s,i)=>{const b=document.createElement('button');b.className='stage-card';b.disabled=!isUnlocked(i,progress.cleared);const title=document.createElement('strong'),desc=document.createElement('span');title.textContent=`${i+1}. ${s.title}${i<progress.cleared?' ✓':b.disabled?' 🔒':''}`;desc.textContent=s.description+(progress.active?.index===i&&i>=progress.cleared?' · 이어서 하기':'');b.append(title,desc);b.onclick=()=>startStage(i);$('stage-list').append(b);});
  $('play-9').disabled=progress.cleared<stages.length;$('unlock-note').textContent=progress.cleared===stages.length?'✓ 9×9 문제 풀기가 열렸어요!':'학습 스테이지를 모두 클리어하면 9×9가 열려요.';
- const s=storage.read(playKey(6));$('resume-label').textContent=valid(s,6)&&s.board.some((v,i)=>v!==s.givens[i])?' · 이어서 풀기':'';
+ const s=storage.read(playKey(6));$('resume-label').textContent=valid(s,6)&&s.board.some((v,i)=>v!==s.givens[i])?'이어 풀기':'';
 }
-function home(){save();document.body.classList.remove('playing','learning');$('home').hidden=false;document.querySelector('header').hidden=false;$('game').hidden=true;$('lesson-picker').hidden=true;$('play-picker').hidden=true;refreshHome();}
+function home(){save();document.body.classList.remove('playing','learning');$('home').hidden=false;document.querySelector('header').hidden=false;$('game').hidden=true;$('lesson-picker').hidden=true;$('learn').setAttribute('aria-expanded','false');refreshHome();}
 function enter(){document.body.classList.add('playing');document.body.classList.toggle('learning',mode==='learn');$('home').hidden=true;document.querySelector('header').hidden=true;$('game').hidden=false;$('tools').hidden=example();$('stage-title').hidden=mode!=='learn';$('stage-title').textContent=mode==='learn'?stages[stageIndex].title:'';$('mode-label').textContent=mode==='learn'?`${stageIndex+1} / ${stages.length}단계 · ${size}×${size}`:`문제 풀기 · ${size}×${size}`;$('new-top').textContent=mode==='learn'?'다시 시작':'새 문제';}
 function unitName(s){return s.unitIndex<size?'가로줄':s.unitIndex<size*2?'세로줄':'작은 상자';}
 function question(){return hintStep.type==='single'?'테두리 칸에 들어갈 숫자를 찾아보세요.':`강조된 ${unitName(hintStep)}에서 ${hintStep.value}이 들어갈 자리를 찾아보세요.`;}
@@ -74,7 +81,7 @@ function input(n){
 }
 function newGame(){if(mode==='learn'){startStage(stageIndex,true);return;}reset();state=makeState(generate(size));$('feedback').hidden=true;save();render();}
 $('home-back').onclick=home;$('new-top').onclick=()=>{if(!completed&&state.board.some((n,i)=>n!==state.givens[i])&&!confirm(mode==='learn'?'이 스테이지를 처음부터 다시 시작할까요?':'새 문제로 바꿀까요?'))return;newGame();};
-$('learn').onclick=()=>{$('lesson-picker').hidden=false;$('play-picker').hidden=true;};$('play').onclick=()=>{$('play-picker').hidden=false;$('lesson-picker').hidden=true;};$('play-6').onclick=()=>startPlay(6);$('play-9').onclick=()=>startPlay(9);
+$('learn').onclick=()=>{const open=$('lesson-picker').hidden;$('lesson-picker').hidden=!open;$('learn').setAttribute('aria-expanded',String(open));if(open)$('lesson-picker').scrollIntoView({behavior:'smooth',block:'start'});};$('play-6').onclick=()=>startPlay(6);$('play-9').onclick=()=>startPlay(9);
 $('memo').onclick=()=>{memo=!memo;render();};$('erase').onclick=()=>input(0);$('undo').onclick=()=>{if(!history.length||completed)return;Object.assign(state,JSON.parse(history.pop()));hintStep=null;hintLevel=0;message('마지막 입력을 되돌렸어요.');save();render();};
 $('hint').onclick=()=>{errorClues=[];if(conflicts(state.board).length){message('먼저 겹치는 숫자를 수정해보세요.');return;}
  if(!hintStep){hintStep=steps(state.board)[0];if(!hintStep){message('현재 입력을 다시 확인해보세요. 되돌리기로 앞선 선택을 살펴볼 수 있어요.');return;}}
