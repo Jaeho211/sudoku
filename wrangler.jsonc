@@ -1,5 +1,6 @@
 {
   "name": "sudoku",
   "compatibility_date": "2026-10-04",
+  "build": { "command": "npm run build" },
   "assets": { "directory": "./dist" }
 }
