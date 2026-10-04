@@ -23,3 +23,5 @@ body.playing aside #hint{width:100%;margin-top:0}
 .cell.error-clue{background:#ffe3c2;box-shadow:inset 0 0 0 2px #bc7132}
 .cell.solved{background:#d2eadf;box-shadow:inset 0 0 0 3px #185d50;font-weight:750}
 @media(max-height:560px){body.learning #board,body.learning:has(#feedback:not([hidden])) #board,body.learning #numbers,body.learning:has(#feedback:not([hidden])) #numbers,body.learning aside{width:min(100%,270px)}}
+
+.cell.excluded::after{content:'×';position:absolute;inset:0;display:grid;place-items:center;color:#946c35;font-size:25px;pointer-events:none}
