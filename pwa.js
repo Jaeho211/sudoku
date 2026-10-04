@@ -1,4 +1,4 @@
-if('serviceWorker' in navigator)window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').catch(error=>console.warn('오프라인 기능 등록 실패',error));});
+if('serviceWorker' in navigator)window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).then(registration=>registration.update()).catch(error=>console.warn('오프라인 기능 등록 실패',error));});
 let installPrompt;
 const button=document.getElementById('install-app');
 window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;button.hidden=false;});
