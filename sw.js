@@ -1,5 +1,5 @@
 const CACHE='sudoku-shell-__BUILD_VERSION__';
-const FILES=['/','/index.html','/style.css','/src/app.js','/src/engine.js','/manifest.webmanifest','/pwa.js','/icons/icon-192.png','/icons/icon-512.png','/icons/icon-180.png'];
+const FILES=['/','/index.html','/style.css','/src/app.js','/src/engine.js','/src/stages.js','/manifest.webmanifest','/pwa.js','/icons/icon-192.png','/icons/icon-512.png','/icons/icon-180.png'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES.map(path=>new Request(path,{cache:'reload'}))).then(()=>self.skipWaiting())));});
 // Activate the downloaded version; existing pages keep their running JS until reload.
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('sudoku-shell-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
