@@ -32,3 +32,19 @@ export function generate(size=6,blanks=size===6?24:40){
  for(const i of shuffle([...b.keys()])){if(removed>=blanks)break;const n=b[i];b[i]=0;if(countSolutions(b)!==1||!logicalSolve(b))b[i]=n;else removed++;}return b;
 }
 export function lesson(type,unitKind=null,size=6){for(let k=0;k<150;k++){const b=generate(size,size===6?26:46),s=steps(b).find(s=>s.type===type&&(!unitKind||(s.unitIndex<size?'row':s.unitIndex<size*2?'column':'box')===unitKind));if(s)return {board:b,step:s};}throw Error('학습 문제 생성에 실패했습니다');}
+
+// Candidate reductions are kept separately from placements, so every deduction is reviewable.
+export function advancedSteps(b,notes=null){
+ if(conflicts(b).length)return [];
+ const size=boardSize(b),g=geometry(size),cs=b.map((n,i)=>n?[]:candidates(b,i).filter(v=>!notes||notes[i].includes(v))),out=[];
+ cs.forEach((c,i)=>{if(c.length===1)out.push({type:'single',cell:i,value:c[0],unit:peers(i,size)});});
+ g.units.forEach((u,k)=>{for(let v=1;v<=size;v++){const places=u.filter(i=>cs[i].includes(v));if(places.length===1&&cs[places[0]].length>1)out.push({type:'hidden',cell:places[0],value:v,unit:u,unitIndex:k});}});
+ g.units.forEach((u,k)=>{
+ if(k>=size*2)for(let v=1;v<=size;v++){
+ const source=u.filter(i=>cs[i].includes(v));if(source.length<2)continue;
+ for(const line of g.units.slice(0,size*2))if(source.every(i=>line.includes(i))){const removals=line.filter(i=>!u.includes(i)&&cs[i].includes(v)).map(cell=>({cell,value:v}));if(removals.length)out.push({type:'locked',unit:u,source,value:v,removals,cell:removals[0].cell});}
+ }
+ for(const i of u){if(cs[i].length!==2)continue;const source=u.filter(j=>cs[j].length===2&&cs[j].join()===cs[i].join());if(source.length!==2||i!==source[0])continue;const removals=u.filter(j=>!source.includes(j)).flatMap(cell=>cs[cell].filter(v=>cs[i].includes(v)).map(value=>({cell,value})));if(removals.length)out.push({type:'pair',unit:u,source,values:cs[i],removals,cell:removals[0].cell,value:removals[0].value});}
+ });return out;
+}
+export function advancedSolve(board){const b=[...board],notes=b.map((_,i)=>candidates(b,i)),trace=[];for(let k=0;k<1000;k++){if(b.every(Boolean))return {board:b,trace};const s=advancedSteps(b,notes)[0];if(!s)return null;trace.push(s);if(s.removals)s.removals.forEach(({cell,value})=>notes[cell]=notes[cell].filter(n=>n!==value));else{b[s.cell]=s.value;notes[s.cell]=[];peers(s.cell,boardSize(b)).forEach(i=>notes[i]=notes[i].filter(n=>n!==s.value));}}return null;}
