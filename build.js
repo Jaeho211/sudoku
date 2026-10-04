@@ -1,0 +1,1 @@
+import fs from 'node:fs';fs.rmSync('dist',{recursive:true,force:true});fs.mkdirSync('dist');for(const p of ['index.html','style.css','src'])fs.cpSync(p,'dist/'+p,{recursive:true});console.log('Static app built in dist/');
