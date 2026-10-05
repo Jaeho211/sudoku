@@ -4,7 +4,13 @@ const $=id=>document.getElementById(id),progressKey='sudoku-stages-v1';
 let mode='play',size=6,state,stageIndex=0,selected=-1,memo=false,history=[],hintStep=null,hintLevel=0,completed=false,errorClues=[];
 const storage={read(k){try{return JSON.parse(localStorage.getItem(k));}catch{return null;}},write(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}};
 let progress=storage.read(progressKey)||{};
-progress={cleared:Number.isInteger(progress.cleared)?Math.max(0,Math.min(stages.length,progress.cleared)):0,active:progress.active||null};
+// Preserve old completions by mapping the old advanced stages to their new positions.
+if(progress.curriculum!==2){
+ const completedMap={14:16,15:20,16:22},activeMap={13:15,14:19,15:21};
+ progress.cleared=completedMap[progress.cleared]??progress.cleared;
+ if(progress.active?.index>=13)progress.active.index=activeMap[progress.active.index]??progress.active.index;
+}
+progress={curriculum:2,cleared:Number.isInteger(progress.cleared)?Math.max(0,Math.min(stages.length,progress.cleared)):0,active:progress.active||null};
 const playKey=n=>n===6?'sudoku-discovery-v1':'sudoku-play-9-v1';
 const advanced=()=>mode==='learn'&&!!stages[stageIndex].candidates;
 const reductions=()=>!!hintStep?.removals;
@@ -34,16 +40,16 @@ function home(){save();document.body.classList.remove('playing','learning');$('h
 function enter(){document.body.classList.add('playing');document.body.classList.toggle('learning',mode==='learn');$('home').hidden=true;document.querySelector('header').hidden=true;$('game').hidden=false;$('tools').hidden=example();$('stage-title').hidden=mode!=='learn';$('stage-title').textContent=mode==='learn'?stages[stageIndex].title:'';$('mode-label').textContent=mode==='learn'?`${stageIndex+1} / ${stages.length}단계 · ${size}×${size}`:`문제 풀기 · ${size}×${size}`;$('new-top').textContent=mode==='learn'?'다시 시작':'새 문제';}
 function unitName(s){return s.unitIndex<size?'가로줄':s.unitIndex<size*2?'세로줄':'작은 상자';}
 function question(){if(hintStep.type==='memo')return '테두리 칸에 가능한 숫자를 모두 메모해보세요. 같은 가로줄·세로줄·상자의 숫자는 제외해요.';
- if(reductions())return explain(hintStep)+' 강조된 바깥 칸에서 해당 후보를 눌러 지워보세요.';
+ if(reductions())return reductionGuide(hintStep,hintLevel)+'\n테두리 칸을 선택하고 아래 숫자 버튼으로 후보를 지워보세요. 답을 채우는 단계가 아니에요.';
  return hintStep.type==='single'?'테두리 칸에 들어갈 숫자를 찾아보세요.':`강조된 ${unitName(hintStep)}에서 ${hintStep.value}이 들어갈 자리를 찾아보세요.`;}
 function restoreExample(){const s=stages[stageIndex];if(s.type==='memo'){hintStep={type:'memo',cell:state.givens.findIndex((n,i)=>!n&&candidates(state.givens,i).length>=3)};selected=hintStep.cell;memo=true;hintLevel=1;return true;}
- hintStep=(s.candidates?advancedSteps(state.givens):steps(state.givens)).find(t=>t.type===s.type&&(!s.kind||(t.unitIndex<size?'row':t.unitIndex<size*2?'column':'box')===s.kind));hintLevel=1;if(hintStep?.type==='single'||hintStep?.removals)selected=hintStep.cell;return !!hintStep;}
+ hintStep=(s.candidates?advancedSteps(state.givens,state.initialNotes||null):steps(state.givens)).find(t=>t.type===s.type&&(!s.kind||(t.unitIndex<size?'row':t.unitIndex<size*2?'column':'box')===s.kind));if(s.one&&hintStep?.removals)hintStep.removals=hintStep.removals.slice(0,1);hintLevel=1;if(hintStep?.type==='single'||hintStep?.removals)selected=hintStep.cell;return !!hintStep;}
 function startStage(index,restart=false){
  if(!isUnlocked(index,progress.cleared))return;save();mode='learn';stageIndex=index;size=stages[index].size;reset();
  const active=progress.active;
  if(!restart&&active?.index===index&&valid(active.state,size))state=active.state;
- else state=makeState(stageBoard(index).board);
- if((advanced()||stages[index].type==='memo')&&!state.candidateMode){state.notes=state.board.map((_,i)=>stages[index].type==='memo'?[]:candidates(state.board,i));state.candidateMode=true;}
+ else {const lesson=stageBoard(index);state=makeState(lesson.board);state.initialNotes=lesson.notes;}
+ if((advanced()||stages[index].type==='memo')&&!state.candidateMode){state.notes=state.initialNotes?.map(a=>[...a])||state.board.map((_,i)=>stages[index].type==='memo'?[]:candidates(state.board,i));state.candidateMode=true;}
  if(example()&&!restoreExample()){state=makeState(stageBoard(index).board);restoreExample();}
  enter();message(example()?(stageIndex===5?'9×9는 1~9를 쓰고 작은 상자는 3×3이에요. ':'')+question():`빈칸을 모두 채워 ${index+1}단계를 클리어해요. 막히면 힌트를 볼 수 있어요.`);
  if((example()&&reductions()&&hintStep.removals.every(r=>!state.notes[r.cell].includes(r.value)))||(example()&&hintStep.type==='memo'&&state.notes[hintStep.cell].length===candidates(state.givens,hintStep.cell).length)||(example()&&!reductions()&&hintStep.type!=='memo'&&state.board[hintStep.cell]===hintStep.value)||(!example()&&state.board.every(Boolean)&&!conflicts(state.board).length))finish();
@@ -62,9 +68,20 @@ function render(){
  $('numbers').style.setProperty('--size',size);$('numbers').replaceChildren();for(let n=1;n<=size;n++){const b=document.createElement('button');b.textContent=n;b.setAttribute('aria-label',`${n} 입력`);b.onclick=()=>input(n);$('numbers').append(b);}
  $('numbers').style.visibility=completed?'hidden':'visible';$('tools').hidden=example()||completed;$('memo').textContent=advanced()?'후보 지우기':'메모';$('memo').classList.toggle('active',memo);$('memo').setAttribute('aria-pressed',String(memo));$('undo').disabled=!history.length;$('hint').hidden=completed;$('hint').textContent=example()?(hintLevel<3?'다음 설명 보기':'설명 다시 보기'):'힌트 보기';
 }
+const position=i=>`${Math.floor(i/size)+1}행 ${i%size+1}열`;
+function reductionGuide(s,level){
+ const places=s.source.map(position).join(', '),first=s.removals.find(r=>state.notes[r.cell].includes(r.value))||s.removals[0];
+ if(s.type==='locked'){
+ const row=s.source.every(i=>Math.floor(i/size)===Math.floor(s.source[0]/size)),line=`${row?Math.floor(s.source[0]/size)+1:s.source[0]%size+1}번째 ${row?'가로줄':'세로줄'}`;
+ const parts=[`① 노란 칸(${places})의 작은 후보 ${s.value}을 보세요. 이 상자에서 ${s.value}이 가능한 칸은 여기뿐이고 모두 ${line}에 있어요.`,`② 아직 어느 칸이 답인지는 몰라요. 그래도 상자에는 ${s.value}이 꼭 하나 필요하므로, ${line} 안의 이 상자에서 ${s.value}을 쓰게 돼요.`,`③ 같은 줄에는 ${s.value}을 두 번 쓸 수 없어요. 따라서 상자 밖 ${position(first.cell)}의 후보 ${first.value}을 지울 수 있어요. 다른 후보는 남겨두세요.`];
+ return parts.slice(0,level).join('\n');
+ }
+ const parts=[`① 노란 두 칸(${places})의 후보는 모두 ${s.values.join('·')}뿐이에요. 두 칸이 같은 가로줄·세로줄 또는 상자 안에 있는지 확인하세요.`,`② 한 칸이 ${s.values[0]}이면 다른 칸은 ${s.values[1]}이고, 반대로 들어가도 두 숫자는 이 두 칸을 차지해요. 순서는 아직 정하지 않아요.`,`③ 같은 구역의 다른 칸에는 이 두 숫자를 또 쓸 수 없어요. ${position(first.cell)}의 후보 ${first.value}을 지워보세요. 두 근거 칸의 후보는 지우지 않아요.`];
+ return parts.slice(0,level).join('\n');
+}
 function explain(s){if(s.type==='memo')return '이 칸의 후보는 '+candidates(state.givens,s.cell).join('·')+'이에요. 후보는 답을 확정하기 전의 메모예요.';
- if(s.type==='locked')return '이 상자에서 '+s.value+'의 후보가 한 줄에 모여 있어요. 그 줄의 상자 바깥에는 '+s.value+'이 들어갈 수 없어요.';
- if(s.type==='pair')return '강조된 두 칸의 후보는 둘 다 '+s.values.join('·')+'뿐이에요. 두 숫자가 이 두 칸을 차지하므로 같은 구역의 다른 칸에서는 지울 수 있어요.';
+ if(s.removals)return reductionGuide(s,3);
+ if(s.type==='single'&&advanced())return `이 칸의 메모에는 ${s.value}만 남았어요. 같은 줄·상자의 숫자와 앞서 지운 후보를 제외한 결과예요. 후보가 하나뿐이므로 ${s.value}을 답으로 넣을 수 있어요.`;
  return s.type==='single'?`같은 가로줄·세로줄·상자에 ${Array.from({length:size},(_,i)=>i+1).filter(n=>n!==s.value).join('·')}이 이미 있어요. 남는 숫자는 ${s.value}뿐이에요.`:`이 ${unitName(s)}에서 ${s.value}이 가능한 자리는 이 칸뿐이에요.`;}
 function success(text,label,action){const p=document.createElement('p');p.textContent=text;const b=document.createElement('button');b.textContent=label;b.onclick=action;$('success').replaceChildren(p,b);$('success').hidden=false;}
 function finish(){
@@ -86,7 +103,7 @@ function input(n){
  }else{
  if(!hintStep.removals.some(r=>r.cell===selected&&r.value===n)||!state.notes[selected].includes(n)){message('강조된 칸에서 이 방법으로 제외할 수 있는 후보를 골라보세요.','retry');return;}
  history.push(JSON.stringify({board:state.board,notes:state.notes}));state.notes[selected]=state.notes[selected].filter(v=>v!==n);
- if(hintStep.removals.every(r=>!state.notes[r.cell].includes(r.value)))finish();else message('✓ 후보를 지웠어요! 강조된 나머지 칸도 살펴보세요.','correct');
+ if(hintStep.removals.every(r=>!state.notes[r.cell].includes(r.value)))finish();else message('✓ 후보를 지웠어요! '+question(),'correct');
  }save();render();return;
  }
  if(example()&&(n===0||selected!==hintStep.cell||n!==hintStep.value)){

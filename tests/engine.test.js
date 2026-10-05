@@ -11,16 +11,27 @@ test('every stage has valid, truthful lessons or a solvable whole puzzle',()=>{f
 test('stages unlock in order and end with a 9×9 puzzle',()=>{assert.equal(isUnlocked(0,0),true);assert.equal(isUnlocked(1,0),false);assert.equal(isUnlocked(5,5),true);assert.equal(isUnlocked(6,5),false);assert.equal(isUnlocked(-1,0),false);assert.equal(isUnlocked(stages.length,stages.length),false);assert.equal(stages.at(-1).size,9);assert.equal(stages.at(-1).type,'puzzle');});
 
 test('advanced reductions never eliminate the unique solution and medium requires both techniques',()=>{
- for(const index of [13,14,15])for(let k=0;k<8;k++){
+ for(const index of [13,14,15,17,18,19,20,21])for(let k=0;k<8;k++){
  const {board}=stageBoard(index),solved=advancedSolve(board);assert.ok(solved);assert.equal(countSolutions(board),1);
  for(const step of solved.trace)if(step.removals)for(const r of step.removals)assert.notEqual(solved.board[r.cell],r.value);
- if(index===15){assert.ok(solved.trace.some(s=>s.type==='locked'));assert.ok(solved.trace.some(s=>s.type==='pair'));assert.equal(logicalSolve(board),null);}
+ if(index===21){assert.ok(solved.trace.some(s=>s.type==='locked'));assert.ok(solved.trace.some(s=>s.type==='pair'));assert.equal(logicalSolve(board),null);}
  }
 });
 test('candidate reductions expose a new single and preserve their effect',()=>{
- const {board}=stageBoard(15),notes=board.map((_,i)=>candidates(board,i));let reductions=0;
+ const {board}=stageBoard(21),notes=board.map((_,i)=>candidates(board,i));let reductions=0;
  for(let k=0;k<300&&!board.every(Boolean);k++){const s=advancedSteps(board,notes)[0];assert.ok(s);
  if(s.removals){reductions++;s.removals.forEach(({cell,value})=>notes[cell]=notes[cell].filter(v=>v!==value));}
  else{board[s.cell]=s.value;notes[s.cell]=[];peers(s.cell,9).forEach(i=>notes[i]=notes[i].filter(v=>v!==s.value));}}
  assert.ok(board.every(Boolean));assert.ok(reductions>=2);assert.equal(conflicts(board).length,0);
+});
+
+test('gentle introduction retains patterns with fewer blanks and one removal',()=>{
+ for(const [intro,full] of [[13,15],[17,19]])for(let k=0;k<5;k++){
+ const a=stageBoard(intro),b=stageBoard(full);
+ assert.equal(a.step.removals.length,1);
+ assert.ok(a.board.filter(n=>!n).length<b.board.filter(n=>!n).length);
+ assert.ok(advancedSteps(a.board,a.notes).some(s=>s.type===stages[intro].type));
+ }
+ const bridge=stageBoard(20);assert.equal(bridge.board.filter(n=>!n).length,12);
+ assert.ok(advancedSolve(bridge.board));
 });
