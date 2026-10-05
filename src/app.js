@@ -5,14 +5,20 @@ let mode='play',size=6,state,stageIndex=0,selected=-1,memo=false,history=[],hint
 const storage={read(k){try{return JSON.parse(localStorage.getItem(k));}catch{return null;}},write(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}};
 let progress=storage.read(progressKey)||{};
 // Preserve old completions by mapping the old advanced stages to their new positions.
-if(progress.curriculum!==2){
+if(!progress.curriculum||progress.curriculum<2){
  const completedMap={14:16,15:20,16:22},activeMap={13:15,14:19,15:21};
  progress.cleared=completedMap[progress.cleared]??progress.cleared;
  if(progress.active?.index>=13)progress.active.index=activeMap[progress.active.index]??progress.active.index;
 }
-progress={curriculum:2,cleared:Number.isInteger(progress.cleared)?Math.max(0,Math.min(stages.length,progress.cleared)):0,active:progress.active||null};
+if(!progress.curriculum||progress.curriculum<3){
+ if(progress.cleared>13)progress.cleared+=4;
+ if(progress.active?.index>=13)progress.active.index+=4;
+}
+progress={curriculum:3,cleared:Number.isInteger(progress.cleared)?Math.max(0,Math.min(stages.length,progress.cleared)):0,active:progress.active||null};
 const playKey=n=>n===6?'sudoku-discovery-v1':'sudoku-play-9-v1';
 const advanced=()=>mode==='learn'&&!!stages[stageIndex].candidates;
+const foundation=()=>mode==='learn'&&!!stages[stageIndex].basicCandidates;
+const guided=()=>mode==='learn'&&!!stages[stageIndex].guided;
 const reductions=()=>!!hintStep?.removals;
 const deductions=()=>advanced()?advancedSteps(state.board,state.notes):steps(state.board);
 const example=()=>mode==='learn'&&stages[stageIndex].type!=='puzzle';
@@ -44,6 +50,14 @@ function question(){if(hintStep.type==='memo')return '테두리 칸에 가능한
  return hintStep.type==='single'?'테두리 칸에 들어갈 숫자를 찾아보세요.':`강조된 ${unitName(hintStep)}에서 ${hintStep.value}이 들어갈 자리를 찾아보세요.`;}
 function restoreExample(){const s=stages[stageIndex];if(s.type==='memo'){hintStep={type:'memo',cell:state.givens.findIndex((n,i)=>!n&&candidates(state.givens,i).length>=3)};selected=hintStep.cell;memo=true;hintLevel=1;return true;}
  hintStep=(s.candidates?advancedSteps(state.givens,state.initialNotes||null):steps(state.givens)).find(t=>t.type===s.type&&(!s.kind||(t.unitIndex<size?'row':t.unitIndex<size*2?'column':'box')===s.kind));if(s.one&&hintStep?.removals)hintStep.removals=hintStep.removals.slice(0,1);hintLevel=1;if(hintStep?.type==='single'||hintStep?.removals)selected=hintStep.cell;return !!hintStep;}
+function coachPrompt(prefix=''){
+ hintStep=deductions().find(s=>!s.removals);hintLevel=1;
+ if(!hintStep)return;
+ if(hintStep.type==='single')selected=hintStep.cell;
+ message(prefix+(hintStep.type==='single'?`① ${position(hintStep.cell)}의 후보`+`를 보세요. 작은 숫자가 하나만 남았어요.
+② 그 숫자를 아래 버튼으로 크게 입력하세요. 메모와 답은 달라요.`:`① 강조된 ${unitName(hintStep)}의 작은 후보 ${hintStep.value}을 찾아보세요.
+② 이 숫자가 후보로 남은 칸은 하나뿐이에요. 그 칸을 선택하고 ${hintStep.value}을 답으로 넣어보세요.`));
+}
 function startStage(index,restart=false){
  if(!isUnlocked(index,progress.cleared))return;save();mode='learn';stageIndex=index;size=stages[index].size;reset();
  const active=progress.active;
@@ -53,6 +67,8 @@ function startStage(index,restart=false){
  if(example()&&!restoreExample()){state=makeState(stageBoard(index).board);restoreExample();}
  enter();message(example()?(stageIndex===5?'9×9는 1~9를 쓰고 작은 상자는 3×3이에요. ':'')+question():`빈칸을 모두 채워 ${index+1}단계를 클리어해요. 막히면 힌트를 볼 수 있어요.`);
  if((example()&&reductions()&&hintStep.removals.every(r=>!state.notes[r.cell].includes(r.value)))||(example()&&hintStep.type==='memo'&&state.notes[hintStep.cell].length===candidates(state.givens,hintStep.cell).length)||(example()&&!reductions()&&hintStep.type!=='memo'&&state.board[hintStep.cell]===hintStep.value)||(!example()&&state.board.every(Boolean)&&!conflicts(state.board).length))finish();
+ if(guided()&&!completed)coachPrompt('후보는 자동으로 적혀 있어요. 직접 한 칸씩 풀어봐요.\n');
+ else if(foundation()&&!completed)message('작은 후보가 하나인 칸부터 찾아 답을 넣어보세요. 그런 칸이 없으면 줄·상자에서 한 숫자가 가능한 자리를 비교해요. 답을 넣으면 같은 구역의 후보는 자동으로 줄어들어요. 후보 지우기는 아직 쓰지 않아요.');
  save();render();
 }
 function startPlay(n){if(n===9&&progress.cleared<10)return;save();mode='play';size=n;reset();const saved=storage.read(playKey(n));state=valid(saved,n)?saved:makeState(generate(n));state.hints=Number.isInteger(state.hints)?state.hints:0;enter();$('feedback').hidden=true;if(state.board.every(Boolean)&&!conflicts(state.board).length)finish();render();}
@@ -66,7 +82,7 @@ function render(){
  if(n)b.textContent=n;else{const notes=document.createElement('span');notes.className='notes';for(let k=1;k<=size;k++){const el=document.createElement('span');el.textContent=state.notes[i].includes(k)?k:'';notes.append(el);}b.append(notes);}
  b.onclick=()=>{if(completed)return;selected=i;errorClues=[];render();};$('board').append(b);});
  $('numbers').style.setProperty('--size',size);$('numbers').replaceChildren();for(let n=1;n<=size;n++){const b=document.createElement('button');b.textContent=n;b.setAttribute('aria-label',`${n} 입력`);b.onclick=()=>input(n);$('numbers').append(b);}
- $('numbers').style.visibility=completed?'hidden':'visible';$('tools').hidden=example()||completed;$('memo').textContent=advanced()?'후보 지우기':'메모';$('memo').classList.toggle('active',memo);$('memo').setAttribute('aria-pressed',String(memo));$('undo').disabled=!history.length;$('hint').hidden=completed;$('hint').textContent=example()?(hintLevel<3?'다음 설명 보기':'설명 다시 보기'):'힌트 보기';
+ $('numbers').style.visibility=completed?'hidden':'visible';$('tools').hidden=example()||completed;$('memo').disabled=foundation();$('memo').textContent=foundation()?'후보 자동 갱신':advanced()?'후보 지우기':'메모';$('memo').classList.toggle('active',memo);$('memo').setAttribute('aria-pressed',String(memo));$('undo').disabled=!history.length;$('hint').hidden=completed;$('hint').textContent=example()?(hintLevel<3?'다음 설명 보기':'설명 다시 보기'):'힌트 보기';
 }
 const position=i=>`${Math.floor(i/size)+1}행 ${i%size+1}열`;
 function reductionGuide(s,level){
@@ -113,17 +129,23 @@ function input(n){
  else if(errorClues.length){const j=errorClues[0],where=Math.floor(j/size)===Math.floor(selected/size)?'가로줄':j%size===selected%size?'세로줄':'작은 상자';message(`여기에는 ${n}을 넣을 수 없어요. 같은 ${where}에 이미 ${n}이 있어요. 표시된 숫자를 살펴보세요.`,'retry');}
  else message(`이번에는 ${hintStep.value}이 들어갈 유일한 자리를 찾고 있어요. 강조된 구역을 다시 살펴보세요.`,'retry');render();return;
  }
+ if(guided()&&n&&(!hintStep||selected!==hintStep.cell||n!==hintStep.value)){message('이번에는 설명에 나온 칸을 후보로 판단해 풀어보세요. 힌트로 이유도 볼 수 있어요.','retry');return;}
+ const oldNotes=state.notes.map(a=>[...a]);
  errorClues=[];history.push(JSON.stringify({board:state.board,notes:state.notes}));
  if(advanced()&&memo&&n){const step=deductions().find(s=>s.removals?.some(r=>r.cell===selected&&r.value===n));if(!step){history.pop();message('이 후보를 지울 근거를 더 찾아보세요. 힌트로 확인할 수 있어요.','retry');return;}state.notes[selected]=state.notes[selected].filter(v=>v!==n);hintStep=null;hintLevel=0;message('✓ 후보를 지웠어요. 새로 하나만 남은 칸을 찾아보세요.','correct');}
  else if(memo&&n){if(state.board[selected]){history.pop();message('메모는 빈칸에 적을 수 있어요.');return;}const a=state.notes[selected];state.notes[selected]=a.includes(n)?a.filter(v=>v!==n):[...a,n].sort();}
  else{state.board[selected]=n;state.notes[selected]=[];if(!n&&advanced())state.notes=state.board.map((_,i)=>candidates(state.board,i));if(n)peers(selected,size).forEach(i=>state.notes[i]=state.notes[i].filter(v=>v!==n));const bad=conflicts(state.board);
  if(example()&&n)finish();else{hintStep=null;hintLevel=0;if(bad.length)message('같은 가로줄·세로줄·상자에 겹치는 숫자가 있어요. 표시된 칸을 확인해보세요.','retry');else if(state.board.every(Boolean))finish();else if(mode==='play')$('feedback').hidden=true;else message('한 칸 채웠어요. 다음 단서를 찾아보세요.');}}
+ if(guided()&&!completed&&n){
+ const changed=peers(selected,size).filter(i=>oldNotes[i].includes(n)&&!state.notes[i].includes(n));
+ coachPrompt(`✓ ${position(selected)}에 ${n}을 넣었어요. 같은 줄·상자에서는 ${n}을 또 쓸 수 없으므로 ${changed.length}칸의 후보 ${n}이 자동으로 지워졌어요.\n이제 다음 칸을 찾아봐요.\n`);
+ }else if(foundation()&&!completed&&n&&!memo&&!conflicts(state.board).length)message(`${n}을 답으로 넣어 같은 줄·상자의 후보 ${n}을 지웠어요. 후보가 하나만 남은 칸을 다시 찾아보세요. 없으면 한 숫자의 유일한 자리를 찾아요.`);
  save();render();
 }
 function newGame(){if(mode==='learn'){startStage(stageIndex,true);return;}reset();state=makeState(generate(size));$('feedback').hidden=true;save();render();}
 $('home-back').onclick=home;$('new-top').onclick=()=>{if(!completed&&state.board.some((n,i)=>n!==state.givens[i])&&!confirm(mode==='learn'?'이 스테이지를 처음부터 다시 시작할까요?':'새 문제로 바꿀까요?'))return;newGame();};
 $('learn').onclick=()=>{const open=$('lesson-picker').hidden;$('lesson-picker').hidden=!open;$('learn').setAttribute('aria-expanded',String(open));if(open)$('lesson-picker').scrollIntoView({behavior:'smooth',block:'start'});};$('play-6').onclick=()=>startPlay(6);$('play-9').onclick=()=>startPlay(9);
-$('memo').onclick=()=>{memo=!memo;render();};$('erase').onclick=()=>input(0);$('undo').onclick=()=>{if(!history.length||completed)return;Object.assign(state,JSON.parse(history.pop()));hintStep=null;hintLevel=0;if(example())restoreExample();message('마지막 입력을 되돌렸어요.');save();render();};
+$('memo').onclick=()=>{memo=!memo;render();};$('erase').onclick=()=>input(0);$('undo').onclick=()=>{if(!history.length||completed)return;Object.assign(state,JSON.parse(history.pop()));hintStep=null;hintLevel=0;if(example())restoreExample();if(guided())coachPrompt('마지막 입력을 되돌렸어요.\n');else message('마지막 입력을 되돌렸어요.');save();render();};
 $('hint').onclick=()=>{errorClues=[];if(conflicts(state.board).length){message('먼저 겹치는 숫자를 수정해보세요.');return;}
  if(!hintStep){hintStep=deductions()[0];if(!hintStep){message('현재 입력을 다시 확인해보세요. 되돌리기로 앞선 선택을 살펴볼 수 있어요.');return;}}
  hintLevel=Math.min(3,hintLevel+1);state.hints=(state.hints||0)+1;

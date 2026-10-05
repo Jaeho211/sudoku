@@ -11,14 +11,14 @@ test('every stage has valid, truthful lessons or a solvable whole puzzle',()=>{f
 test('stages unlock in order and end with a 9×9 puzzle',()=>{assert.equal(isUnlocked(0,0),true);assert.equal(isUnlocked(1,0),false);assert.equal(isUnlocked(5,5),true);assert.equal(isUnlocked(6,5),false);assert.equal(isUnlocked(-1,0),false);assert.equal(isUnlocked(stages.length,stages.length),false);assert.equal(stages.at(-1).size,9);assert.equal(stages.at(-1).type,'puzzle');});
 
 test('advanced reductions never eliminate the unique solution and medium requires both techniques',()=>{
- for(const index of [13,14,15,17,18,19,20,21])for(let k=0;k<8;k++){
+ for(const index of [17,18,19,21,22,23,24,25])for(let k=0;k<8;k++){
  const {board}=stageBoard(index),solved=advancedSolve(board);assert.ok(solved);assert.equal(countSolutions(board),1);
  for(const step of solved.trace)if(step.removals)for(const r of step.removals)assert.notEqual(solved.board[r.cell],r.value);
- if(index===21){assert.ok(solved.trace.some(s=>s.type==='locked'));assert.ok(solved.trace.some(s=>s.type==='pair'));assert.equal(logicalSolve(board),null);}
+ if(index===25){assert.ok(solved.trace.some(s=>s.type==='locked'));assert.ok(solved.trace.some(s=>s.type==='pair'));assert.equal(logicalSolve(board),null);}
  }
 });
 test('candidate reductions expose a new single and preserve their effect',()=>{
- const {board}=stageBoard(21),notes=board.map((_,i)=>candidates(board,i));let reductions=0;
+ const {board}=stageBoard(25),notes=board.map((_,i)=>candidates(board,i));let reductions=0;
  for(let k=0;k<300&&!board.every(Boolean);k++){const s=advancedSteps(board,notes)[0];assert.ok(s);
  if(s.removals){reductions++;s.removals.forEach(({cell,value})=>notes[cell]=notes[cell].filter(v=>v!==value));}
  else{board[s.cell]=s.value;notes[s.cell]=[];peers(s.cell,9).forEach(i=>notes[i]=notes[i].filter(v=>v!==s.value));}}
@@ -26,12 +26,28 @@ test('candidate reductions expose a new single and preserve their effect',()=>{
 });
 
 test('gentle introduction retains patterns with fewer blanks and one removal',()=>{
- for(const [intro,full] of [[13,15],[17,19]])for(let k=0;k<5;k++){
+ for(const [intro,full] of [[17,19],[21,23]])for(let k=0;k<5;k++){
  const a=stageBoard(intro),b=stageBoard(full);
  assert.equal(a.step.removals.length,1);
  assert.ok(a.board.filter(n=>!n).length<b.board.filter(n=>!n).length);
  assert.ok(advancedSteps(a.board,a.notes).some(s=>s.type===stages[intro].type));
  }
- const bridge=stageBoard(20);assert.equal(bridge.board.filter(n=>!n).length,12);
+ const bridge=stageBoard(24);assert.equal(bridge.board.filter(n=>!n).length,12);
  assert.ok(advancedSolve(bridge.board));
+});
+
+test('candidate foundation comes before reductions and can be solved with basic placements',()=>{
+ assert.equal(stages[13].guided,true);assert.equal(stages[14].kind,'row');assert.equal(stages[15].kind,'column');
+ for(const index of [13,16])for(let k=0;k<5;k++){
+ const {board}=stageBoard(index);assert.equal(board.filter(n=>!n).length,stages[index].blanks);
+ assert.ok(logicalSolve(board));
+ const notes=board.map((_,i)=>candidates(board,i));
+ while(board.some(n=>!n)){
+ const s=advancedSteps(board,notes).find(s=>!s.removals);assert.ok(s);
+ board[s.cell]=s.value;notes[s.cell]=[];
+ peers(s.cell,9).forEach(i=>notes[i]=notes[i].filter(n=>n!==s.value));
+ assert.deepEqual(notes,board.map((_,i)=>candidates(board,i)));
+ }
+ }
+ assert.equal(stages[17].type,'locked');
 });
